@@ -12,6 +12,8 @@ ODDS_MAX_X100 = 10_000
 
 _ODDS_RE = re.compile(r"^(?:100(?:\.0{1,2})?|[1-9]\d?(?:\.\d{1,2})?)$")
 _AMOUNT_RE = re.compile(r"^\d{1,9}$")
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,32}$")
+_USER_ID_RE = re.compile(r"^[1-9]\d{0,17}$")
 
 EVENT_STATUS_LABELS = {
     "pending": "⏳ на модерации",
@@ -87,4 +89,32 @@ def parse_amount(raw: str, min_bet: int, balance: int) -> int:
         raise ValueError(f"Минимальная ставка — {fmt_gold(min_bet)} голды.")
     if amount > balance:
         raise ValueError(f"Недостаточно голды. Баланс: {fmt_gold(balance)}.")
+    return amount
+
+
+def validate_recipient_query(raw: str) -> str:
+    cleaned = raw.strip()
+    cleaned = cleaned.removeprefix("@")
+    if not cleaned:
+        raise ValueError("Введи @username или Telegram ID получателя.")
+    if _USER_ID_RE.fullmatch(cleaned):
+        return cleaned
+    if _USERNAME_RE.fullmatch(cleaned):
+        return cleaned
+    raise ValueError(
+        "Некорректный формат получателя. "
+        "Укажи @username (3-32 символа: латиница, цифры, подчёркивание) "
+        "или числовой Telegram ID."
+    )
+
+
+def parse_transfer_amount(raw: str, balance: int) -> int:
+    text = raw.strip()
+    if not _AMOUNT_RE.fullmatch(text):
+        raise ValueError("Сумма — целое положительное число голды без пробелов и знаков.")
+    amount = int(text)
+    if amount <= 0:
+        raise ValueError("Сумма перевода должна быть больше 0.")
+    if amount > balance:
+        raise ValueError(f"Недостаточно голды для перевода. Баланс: {fmt_gold(balance)}.")
     return amount

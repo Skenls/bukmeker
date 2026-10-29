@@ -10,3 +10,9 @@ class ProposeStates(StatesGroup):
 class BetStates(StatesGroup):
     amount = State()
     confirm = State()
+
+
+class TransferStates(StatesGroup):
+    recipient = State()
+    amount = State()
+    confirm = State()

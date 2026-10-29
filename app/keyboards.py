@@ -32,6 +32,11 @@ class AdminCB(CallbackData, prefix="adm"):
     outcome: str = ""
 
 
+class TransferCB(CallbackData, prefix="tr"):
+    action: str
+    recipient_id: int = 0
+
+
 def _btn(text: str, callback_data: CallbackData) -> InlineKeyboardButton:
     return InlineKeyboardButton(text=text, callback_data=callback_data.pack())
 
@@ -44,17 +49,40 @@ def main_menu(is_admin: bool) -> InlineKeyboardMarkup:
         ],
         [
             _btn("➕ Предложить событие", MenuCB(action="propose")),
-            _btn("📝 Мои ставки", MenuCB(action="mybets")),
+            _btn("💸 Перевод", MenuCB(action="transfer")),
         ],
         [
+            _btn("📝 Мои ставки", MenuCB(action="mybets")),
             _btn("🗂 Мои заявки", MenuCB(action="myevents")),
-            _btn("🏆 Статистика", MenuCB(action="stats")),
         ],
-        [_btn("ℹ️ Помощь", MenuCB(action="help"))],
+        [
+            _btn("🏆 Статистика", MenuCB(action="stats")),
+            _btn("ℹ️ Помощь", MenuCB(action="help")),
+        ],
     ]
     if is_admin:
         rows.append([_btn("🛠 Админ-панель", MenuCB(action="admin"))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def transfer_cancel() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[_btn("❌ Отмена", TransferCB(action="cancel"))]]
+    )
+
+
+def transfer_confirm(recipient_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _btn(
+                    "✅ Подтвердить перевод",
+                    TransferCB(action="submit", recipient_id=recipient_id),
+                )
+            ],
+            [_btn("❌ Отмена", TransferCB(action="cancel"))],
+        ]
+    )
 
 
 def back_to_menu() -> InlineKeyboardMarkup:

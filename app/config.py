@@ -47,7 +47,7 @@ def load_settings() -> Settings:
     if not token:
         raise RuntimeError("BOT_TOKEN не задан. Заполните .env")
 
-    start_balance = _positive_int("START_BALANCE", 1000)
+    start_balance = _positive_int("START_BALANCE", 50000)
     min_bet = _positive_int("MIN_BET", 10)
     max_pending = _positive_int("MAX_PENDING", 3)
     if min_bet > start_balance:

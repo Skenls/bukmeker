@@ -16,6 +16,7 @@ from .handlers import admin as admin_handlers
 from .handlers import bets as bets_handlers
 from .handlers import fallback
 from .handlers import menu as menu_handlers
+from .handlers import transfer as transfer_handlers
 from .middlewares import UserMiddleware
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ async def main() -> None:
 
     dp.include_router(menu_handlers.router)
     dp.include_router(bets_handlers.router)
+    dp.include_router(transfer_handlers.router)
     dp.include_router(admin_handlers.router)
     dp.include_router(fallback.router)
 

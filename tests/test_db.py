@@ -172,6 +172,68 @@ class DatabaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["staked"], 100)
         self.assertEqual(stats["net"], 150)
 
+    async def test_find_user_by_query(self) -> None:
+        user_by_id = await self.db.find_user_by_query("2")
+        self.assertIsNotNone(user_by_id)
+        self.assertEqual(user_by_id["user_id"], 2)
+
+        user_by_at = await self.db.find_user_by_query("@user2")
+        self.assertIsNotNone(user_by_at)
+        self.assertEqual(user_by_at["user_id"], 2)
+
+        user_case = await self.db.find_user_by_query("USER2")
+        self.assertIsNotNone(user_case)
+        self.assertEqual(user_case["user_id"], 2)
+
+        not_found = await self.db.find_user_by_query("nonexistent")
+        self.assertIsNone(not_found)
+
+    async def test_transfer_gold_success(self) -> None:
+        res = await self.db.transfer_gold(from_user_id=1, to_user_id=2, amount=300)
+        self.assertEqual(res["from_balance"], 700)
+        self.assertEqual(res["to_balance"], 1300)
+
+        u1 = await self.db.get_user(1)
+        u2 = await self.db.get_user(2)
+        self.assertEqual(u1["balance"], 700)
+        self.assertEqual(u2["balance"], 1300)
+
+        async with self.db.conn.execute("SELECT from_id, to_id, amount FROM transfers") as cur:
+            row = await cur.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(dict(row), {"from_id": 1, "to_id": 2, "amount": 300})
+
+    async def test_transfer_guards(self) -> None:
+        with self.assertRaises(ActionError):
+            await self.db.transfer_gold(1, 1, 100)
+
+        with self.assertRaises(ActionError):
+            await self.db.transfer_gold(1, 2, 0)
+
+        with self.assertRaises(ActionError):
+            await self.db.transfer_gold(1, 2, 1001)
+
+        with self.assertRaises(ActionError):
+            await self.db.transfer_gold(1, 99999, 100)
+
+    async def test_concurrent_transfers_no_double_spend(self) -> None:
+        # Баланс пользователя 1 = 1000. Отправляем два перевода по 600.
+        results = await asyncio.gather(
+            self.db.transfer_gold(1, 2, 600),
+            self.db.transfer_gold(1, 2, 600),
+            return_exceptions=True,
+        )
+        successes = [r for r in results if isinstance(r, dict)]
+        failures = [r for r in results if isinstance(r, ActionError)]
+
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+
+        u1 = await self.db.get_user(1)
+        u2 = await self.db.get_user(2)
+        self.assertEqual(u1["balance"], 400)
+        self.assertEqual(u2["balance"], 1600)
+
 
 if __name__ == "__main__":
     unittest.main()

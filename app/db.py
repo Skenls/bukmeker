@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS bets (
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status, id DESC);
 CREATE INDEX IF NOT EXISTS idx_bets_user ON bets(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_bets_event ON bets(event_id, status);
+
+CREATE TABLE IF NOT EXISTS transfers (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_id    INTEGER NOT NULL REFERENCES users(user_id),
+    to_id      INTEGER NOT NULL REFERENCES users(user_id),
+    amount     INTEGER NOT NULL CHECK (amount > 0),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_transfers_from ON transfers(from_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers(to_id, id DESC);
 """
 
 EVENT_SELECT = """
@@ -483,3 +494,71 @@ class Database:
                 "INSERT INTO admins (user_id) VALUES (?)", (user_id,)
             )
             return True
+
+    async def find_user_by_query(self, query: str) -> dict[str, Any] | None:
+        cleaned = query.strip()
+        cleaned = cleaned.removeprefix("@")
+        if not cleaned:
+            return None
+
+        async with self._lock:
+            if cleaned.isdigit():
+                return await self._fetchone(
+                    "SELECT user_id, username, full_name, balance, created_at FROM users "
+                    "WHERE user_id = ? OR LOWER(username) = LOWER(?)",
+                    (int(cleaned), cleaned),
+                )
+            return await self._fetchone(
+                "SELECT user_id, username, full_name, balance, created_at FROM users "
+                "WHERE LOWER(username) = LOWER(?)",
+                (cleaned,),
+            )
+
+    async def transfer_gold(
+        self, from_user_id: int, to_user_id: int, amount: int
+    ) -> dict[str, Any]:
+        if from_user_id == to_user_id:
+            raise ActionError("Нельзя переводить голду самому себе.")
+        if amount <= 0:
+            raise ActionError("Сумма перевода должна быть больше нуля.")
+
+        async with self._tx():
+            sender = await self._fetchone(
+                "SELECT user_id, username, full_name, balance FROM users WHERE user_id = ?",
+                (from_user_id,),
+            )
+            if sender is None:
+                raise ActionError("Отправитель не найден.")
+            if sender["balance"] < amount:
+                raise ActionError("Недостаточно голды для перевода.")
+
+            recipient = await self._fetchone(
+                "SELECT user_id, username, full_name, balance FROM users WHERE user_id = ?",
+                (to_user_id,),
+            )
+            if recipient is None:
+                raise ActionError("Получатель не найден в боте.")
+
+            new_from_balance = sender["balance"] - amount
+            new_to_balance = recipient["balance"] + amount
+
+            await self.conn.execute(
+                "UPDATE users SET balance = balance - ? WHERE user_id = ?",
+                (amount, from_user_id),
+            )
+            await self.conn.execute(
+                "UPDATE users SET balance = balance + ? WHERE user_id = ?",
+                (amount, to_user_id),
+            )
+            await self.conn.execute(
+                "INSERT INTO transfers (from_id, to_id, amount) VALUES (?, ?, ?)",
+                (from_user_id, to_user_id, amount),
+            )
+
+            return {
+                "from_balance": new_from_balance,
+                "to_balance": new_to_balance,
+                "sender": dict(sender),
+                "recipient": dict(recipient),
+                "amount": amount,
+            }
